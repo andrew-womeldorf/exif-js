@@ -1,7 +1,7 @@
 /**
- * Exif.js (https://github.com/andrew-womeldorf/exif-js)
+ * Exif.js v2.4.0 (https://github.com/andrew-womeldorf/exif-js/tree/v2.4.0)
  * Copyright 2008 Jacob Seidelin
- * MIT License (https://raw.githubusercontent.com/andrew-womeldorf/exif-js/master/LICENSE)
+ * MIT License (https://raw.githubusercontent.com/andrew-womeldorf/exif-js/v2.4.0/LICENSE)
  */
 (function () {
   var debug = false;
