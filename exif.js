@@ -377,7 +377,7 @@
    * callback : function
    * raw : bool
    *     Default: false
-   *     Whether to use the tag nicenames or raw value.
+   *     Tags should be human readable (false) or machine readable (true)
    */
   function getImageData(img, callback, raw) {
     function handleBinaryFile(binFile, raw) {
@@ -594,7 +594,7 @@
    *     Mapping of raw EXIF tag to string name
    * bigEnd : TODO
    * raw : bool
-   *     Use stringified name or not
+   *     Tags should be human readable (false) or machine readable (true)
    */
   function readTags(file, tiffStart, dirStart, strings, bigEnd, raw) {
     var entries = file.getUint16(dirStart, !bigEnd),
@@ -743,7 +743,7 @@
    * firstIFDOffset : TODO
    * bigEnd : TODO
    * raw : bool
-   *     Tags should be raw values or stringified prettynames
+   *     Tags should be human readable (false) or machine readable (true)
    */
   function readThumbnailImage(dataView, tiffStart, firstIFDOffset, bigEnd, raw) {
     // get the IFD1 offset
@@ -833,7 +833,7 @@
    * start : TODO: What type is this?
    *     Location where the EXIF data begin in the file
    * raw : bool
-   *     Use prettynames for metadata or not
+   *     Tags should be human readable (false) or machine readable (true)
    */
   function readEXIFData(file, start, raw) {
     if (getStringFromDB(file, start, 4) != "Exif") {
@@ -1121,7 +1121,7 @@
    * callback : function
    * raw : bool
    *     Default: false
-   *     Whether to use the tag nicenames or raw value.
+   *     Tags should be human readable (false) or machine readable (true)
    *
    * Returns
    * -------
@@ -1220,7 +1220,7 @@
    * img : self.Image
    * raw : bool
    *     Default: false
-   *     Whether to use the tag nicenames or raw value.
+   *     Tags should be human readable (false) or machine readable (true)
    */
   EXIF.readFromBinaryFile = function (file, raw) {
     raw = raw || false
