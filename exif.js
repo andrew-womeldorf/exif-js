@@ -1,7 +1,7 @@
 /**
- * Exif.js v2.3.0 (https://github.com/andrew-womeldorf/exif-js/tree/v2.3.0)
+ * Exif.js (https://github.com/andrew-womeldorf/exif-js)
  * Copyright 2008 Jacob Seidelin
- * MIT License (https://raw.githubusercontent.com/andrew-womeldorf/exif-js/v2.3.0/LICENSE.md)
+ * MIT License (https://raw.githubusercontent.com/andrew-womeldorf/exif-js/master/LICENSE)
  */
 (function () {
   var debug = false;
@@ -368,11 +368,22 @@
     http.send();
   }
 
-  function getImageData(img, callback) {
-    function handleBinaryFile(binFile) {
-      var data = findEXIFinJPEG(binFile);
+  /**
+   * Read image metadata and add to HTML element.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   * callback : function
+   * raw : bool
+   *     Default: false
+   *     Whether to use the tag nicenames or raw value.
+   */
+  function getImageData(img, callback, raw) {
+    function handleBinaryFile(binFile, raw) {
+      var data = findEXIFinJPEG(binFile, raw);
       img.exifdata = data || {};
-      var iptcdata = findIPTCinJPEG(binFile);
+      var iptcdata = findIPTCinJPEG(binFile, raw);
       img.iptcdata = iptcdata || {};
       if (EXIF.isXmpEnabled) {
         var xmpdata = findXMPinJPEG(binFile);
@@ -387,12 +398,12 @@
       if (/^data\:/i.test(img.src)) {
         // Data URI
         var arrayBuffer = base64ToArrayBuffer(img.src);
-        handleBinaryFile(arrayBuffer);
+        handleBinaryFile(arrayBuffer, raw);
       } else if (/^blob\:/i.test(img.src)) {
         // Object URL
         var fileReader = new FileReader();
         fileReader.onload = function (e) {
-          handleBinaryFile(e.target.result);
+          handleBinaryFile(e.target.result, raw);
         };
         objectURLToBlob(img.src, function (blob) {
           fileReader.readAsArrayBuffer(blob);
@@ -401,7 +412,7 @@
         var http = new XMLHttpRequest();
         http.onload = function () {
           if (this.status == 200 || this.status === 0) {
-            handleBinaryFile(http.response);
+            handleBinaryFile(http.response, raw);
           } else {
             throw "Could not load image";
           }
@@ -419,14 +430,19 @@
       fileReader.onload = function (e) {
         if (debug)
           console.log("Got file of length " + e.target.result.byteLength);
-        handleBinaryFile(e.target.result);
+        handleBinaryFile(e.target.result, raw);
       };
 
       fileReader.readAsArrayBuffer(img);
     }
   }
 
-  function findEXIFinJPEG(file) {
+  /**
+   * Determine the starting point in the file for reading EXIF data.
+   *
+   * TODO: Document inputs and returns
+   */
+  function findEXIFinJPEG(file, raw) {
     var dataView = new DataView(file);
 
     if (debug) console.log("Got file of length " + file.byteLength);
@@ -452,7 +468,7 @@
       }
 
       marker = dataView.getUint8(offset + 1);
-      if (debug) console.log(marker);
+      if (debug) console.log("marker", marker);
 
       // we could implement handling for other markers here,
       // but we're only looking for 0xFFE1 for EXIF data
@@ -463,7 +479,8 @@
         return readEXIFData(
           dataView,
           offset + 4,
-          dataView.getUint16(offset + 2) - 2
+          raw,
+          dataView.getUint16(offset + 2) - 2 // TODO: What's this parameter? Not used?
         );
 
         // offset += 2 + file.getShortAt(offset+2, true);
@@ -473,7 +490,7 @@
     }
   }
 
-  function findIPTCinJPEG(file) {
+  function findIPTCinJPEG(file, raw) {
     var dataView = new DataView(file);
 
     if (debug) console.log("Got file of length " + file.byteLength);
@@ -565,7 +582,21 @@
     return data;
   }
 
-  function readTags(file, tiffStart, dirStart, strings, bigEnd) {
+  /**
+   * Read the metadata tags from the file between starting/ending points.
+   *
+   * Inputs
+   * ------
+   * file : TODO
+   * tiffStart : TODO
+   * dirStart : TODO
+   * strings : Object
+   *     Mapping of raw EXIF tag to string name
+   * bigEnd : TODO
+   * raw : bool
+   *     Use stringified name or not
+   */
+  function readTags(file, tiffStart, dirStart, strings, bigEnd, raw) {
     var entries = file.getUint16(dirStart, !bigEnd),
       tags = {},
       entryOffset,
@@ -574,7 +605,8 @@
 
     for (i = 0; i < entries; i++) {
       entryOffset = dirStart + i * 12 + 2;
-      tag = strings[file.getUint16(entryOffset, !bigEnd)];
+      tag = file.getUint16(entryOffset, !bigEnd);
+      tag = raw ? tag : strings[file.getUint16(entryOffset, !bigEnd)];
       if (!tag && debug)
         console.log("Unknown tag: " + file.getUint16(entryOffset, !bigEnd));
       tags[tag] = readTagValue(file, entryOffset, tiffStart, dirStart, bigEnd);
@@ -582,6 +614,9 @@
     return tags;
   }
 
+  /**
+   * Get the value for a tag
+   */
   function readTagValue(file, entryOffset, tiffStart, dirStart, bigEnd) {
     var type = file.getUint16(entryOffset + 2, !bigEnd),
       numValues = file.getUint32(entryOffset + 4, !bigEnd),
@@ -698,7 +733,19 @@
     return dataView.getUint32(dirStart + 2 + entries * 12, !bigEnd); // each entry is 12 bytes long
   }
 
-  function readThumbnailImage(dataView, tiffStart, firstIFDOffset, bigEnd) {
+  /**
+   * TODO: document
+   *
+   * Inputs
+   * ------
+   * dataView : TODO
+   * tiffStart : TODO
+   * firstIFDOffset : TODO
+   * bigEnd : TODO
+   * raw : bool
+   *     Tags should be raw values or stringified prettynames
+   */
+  function readThumbnailImage(dataView, tiffStart, firstIFDOffset, bigEnd, raw) {
     // get the IFD1 offset
     var IFD1OffsetPointer = getNextIFDOffset(
       dataView,
@@ -721,7 +768,8 @@
       tiffStart,
       tiffStart + IFD1OffsetPointer,
       IFD1Tags,
-      bigEnd
+      bigEnd,
+      raw
     );
 
     // EXIF 2.3 specification for JPEG format thumbnail
@@ -776,7 +824,18 @@
     return outstr;
   }
 
-  function readEXIFData(file, start) {
+  /**
+   * Parses TIFF, EXIF and GPS tags, and looks for a thumbnail
+   *
+   * Inputs
+   * ------
+   * file : DataView
+   * start : TODO: What type is this?
+   *     Location where the EXIF data begin in the file
+   * raw : bool
+   *     Use prettynames for metadata or not
+   */
+  function readEXIFData(file, start, raw) {
     if (getStringFromDB(file, start, 4) != "Exif") {
       if (debug)
         console.log("Not valid EXIF data! " + getStringFromDB(file, start, 4));
@@ -821,7 +880,8 @@
       tiffOffset,
       tiffOffset + firstIFDOffset,
       TiffTags,
-      bigEnd
+      bigEnd,
+      raw
     );
 
     if (tags.ExifIFDPointer) {
@@ -830,7 +890,8 @@
         tiffOffset,
         tiffOffset + tags.ExifIFDPointer,
         ExifTags,
-        bigEnd
+        bigEnd,
+        raw
       );
       for (tag in exifData) {
         switch (tag) {
@@ -880,7 +941,8 @@
         tiffOffset,
         tiffOffset + tags.GPSInfoIFDPointer,
         GPSTags,
-        bigEnd
+        bigEnd,
+        raw
       );
       for (tag in gpsData) {
         switch (tag) {
@@ -904,7 +966,8 @@
       file,
       tiffOffset,
       firstIFDOffset,
-      bigEnd
+      bigEnd,
+      raw
     );
 
     return tags;
@@ -1049,16 +1112,33 @@
     EXIF.isXmpEnabled = false;
   };
 
-  EXIF.getData = function (img, callback) {
+  /**
+   * Trigger reading the image metadata, or trigger the callback.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   * callback : function
+   * raw : bool
+   *     Default: false
+   *     Whether to use the tag nicenames or raw value.
+   *
+   * Returns
+   * -------
+   * bool : Validity of the passed img
+   */
+  EXIF.getData = function (img, callback, raw) {
+    raw = raw || false
     if (
       ((self.Image && img instanceof self.Image) ||
         (self.HTMLImageElement && img instanceof self.HTMLImageElement)) &&
       !img.complete
-    )
+    ) {
       return false;
+    }
 
     if (!imageHasData(img)) {
-      getImageData(img, callback);
+      getImageData(img, callback, raw);
     } else {
       if (callback) {
         callback.call(img);
@@ -1132,8 +1212,19 @@
     return strPretty;
   };
 
-  EXIF.readFromBinaryFile = function (file) {
-    return findEXIFinJPEG(file);
+  /**
+   * TODO: Add description
+   *
+   * Inputs
+   * ------
+   * img : self.Image
+   * raw : bool
+   *     Default: false
+   *     Whether to use the tag nicenames or raw value.
+   */
+  EXIF.readFromBinaryFile = function (file, raw) {
+    raw = raw || false
+    return findEXIFinJPEG(file, raw);
   };
 
   if (typeof define === "function" && define.amd) {
