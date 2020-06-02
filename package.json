@@ -9,20 +9,21 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/exif-js/exif-js"
+    "url": "https://github.com/andrew-womeldorf/exif-js"
   },
   "keywords": [
     "exif"
   ],
   "author": "Jacob Seidelin",
   "maintainers": [
-    "Roald de Vries"
+    "Roald de Vries",
+    "Andrew Womeldorf"
   ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/exif-js/exif-js/issues"
+    "url": "https://github.com/andrew-womeldorf/exif-js/issues"
   },
-  "homepage": "https://github.com/exif-js/exif-js",
+  "homepage": "https://github.com/andrew-womeldorf/exif-js",
   "ignore": [
     "**/.*",
     "node_modules",
@@ -34,6 +35,11 @@
   ],
   "devDependencies": {
     "bower": "^1.4.2",
-    "mversion": "^1.10.0"
+    "mversion": "^1.10.0",
+    "prettier": "^2.0.5"
+  },
+  "scripts": {
+    "format": "prettier --write **/*.js",
+    "format-check": "prettier -c **/*.js"
   }
 }
