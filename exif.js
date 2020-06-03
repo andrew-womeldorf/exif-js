@@ -1,7 +1,7 @@
 /**
- * Exif.js v2.4.0 (https://github.com/andrew-womeldorf/exif-js/tree/v2.4.0)
+ * Exif.js (https://github.com/andrew-womeldorf/exif-js)
  * Copyright 2008 Jacob Seidelin
- * MIT License (https://raw.githubusercontent.com/andrew-womeldorf/exif-js/v2.4.0/LICENSE)
+ * MIT License (https://raw.githubusercontent.com/andrew-womeldorf/exif-js/master/LICENSE)
  */
 (function () {
   var debug = false;
@@ -21,6 +21,42 @@
     exports.EXIF = EXIF;
   } else {
     root.EXIF = EXIF;
+  }
+
+  /**
+   * Object.assign pollyfill.
+   *
+   * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Polyfill
+   */
+  if (typeof Object.assign !== "function") {
+    // Must be writable: true, enumerable: false, configurable: true
+    Object.defineProperty(Object, "assign", {
+      value: function assign(target, varArgs) {
+        // .length of function is 2
+        "use strict";
+        if (target === null || target === undefined) {
+          throw new TypeError("Cannot convert undefined or null to object");
+        }
+
+        var to = Object(target);
+
+        for (var index = 1; index < arguments.length; index++) {
+          var nextSource = arguments[index];
+
+          if (nextSource !== null && nextSource !== undefined) {
+            for (var nextKey in nextSource) {
+              // Avoid bugs when hasOwnProperty is shadowed
+              if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
+                to[nextKey] = nextSource[nextKey];
+              }
+            }
+          }
+        }
+        return to;
+      },
+      writable: true,
+      configurable: true,
+    });
   }
 
   var ExifTags = (EXIF.Tags = {
@@ -167,6 +203,13 @@
     0x001d: "GPSDateStamp",
     0x001e: "GPSDifferential",
   });
+
+  var AllTags = (EXIF.AllTags = Object.assign(
+    {},
+    EXIF.Tags,
+    EXIF.TiffTags,
+    EXIF.GPSTags
+  ));
 
   // EXIF 2.3 Spec
   var IFD1Tags = (EXIF.IFD1Tags = {
@@ -375,15 +418,12 @@
    * ------
    * img : HTMLImageElement || self.Image
    * callback : function
-   * raw : bool
-   *     Default: false
-   *     Tags should be human readable (false) or machine readable (true)
    */
-  function getImageData(img, callback, raw) {
-    function handleBinaryFile(binFile, raw) {
-      var data = findEXIFinJPEG(binFile, raw);
+  function getImageData(img, callback) {
+    function handleBinaryFile(binFile) {
+      var data = findEXIFinJPEG(binFile);
       img.exifdata = data || {};
-      var iptcdata = findIPTCinJPEG(binFile, raw);
+      var iptcdata = findIPTCinJPEG(binFile);
       img.iptcdata = iptcdata || {};
       if (EXIF.isXmpEnabled) {
         var xmpdata = findXMPinJPEG(binFile);
@@ -398,12 +438,12 @@
       if (/^data\:/i.test(img.src)) {
         // Data URI
         var arrayBuffer = base64ToArrayBuffer(img.src);
-        handleBinaryFile(arrayBuffer, raw);
+        handleBinaryFile(arrayBuffer);
       } else if (/^blob\:/i.test(img.src)) {
         // Object URL
         var fileReader = new FileReader();
         fileReader.onload = function (e) {
-          handleBinaryFile(e.target.result, raw);
+          handleBinaryFile(e.target.result);
         };
         objectURLToBlob(img.src, function (blob) {
           fileReader.readAsArrayBuffer(blob);
@@ -412,7 +452,7 @@
         var http = new XMLHttpRequest();
         http.onload = function () {
           if (this.status == 200 || this.status === 0) {
-            handleBinaryFile(http.response, raw);
+            handleBinaryFile(http.response);
           } else {
             throw "Could not load image";
           }
@@ -430,7 +470,7 @@
       fileReader.onload = function (e) {
         if (debug)
           console.log("Got file of length " + e.target.result.byteLength);
-        handleBinaryFile(e.target.result, raw);
+        handleBinaryFile(e.target.result);
       };
 
       fileReader.readAsArrayBuffer(img);
@@ -442,7 +482,7 @@
    *
    * TODO: Document inputs and returns
    */
-  function findEXIFinJPEG(file, raw) {
+  function findEXIFinJPEG(file) {
     var dataView = new DataView(file);
 
     if (debug) console.log("Got file of length " + file.byteLength);
@@ -479,7 +519,6 @@
         return readEXIFData(
           dataView,
           offset + 4,
-          raw,
           dataView.getUint16(offset + 2) - 2 // TODO: What's this parameter? Not used?
         );
 
@@ -490,7 +529,7 @@
     }
   }
 
-  function findIPTCinJPEG(file, raw) {
+  function findIPTCinJPEG(file) {
     var dataView = new DataView(file);
 
     if (debug) console.log("Got file of length " + file.byteLength);
@@ -590,13 +629,9 @@
    * file : TODO
    * tiffStart : TODO
    * dirStart : TODO
-   * strings : Object
-   *     Mapping of raw EXIF tag to string name
    * bigEnd : TODO
-   * raw : bool
-   *     Tags should be human readable (false) or machine readable (true)
    */
-  function readTags(file, tiffStart, dirStart, strings, bigEnd, raw) {
+  function readTags(file, tiffStart, dirStart, bigEnd) {
     var entries = file.getUint16(dirStart, !bigEnd),
       tags = {},
       entryOffset,
@@ -606,12 +641,95 @@
     for (i = 0; i < entries; i++) {
       entryOffset = dirStart + i * 12 + 2;
       tag = file.getUint16(entryOffset, !bigEnd);
-      tag = raw ? tag : strings[file.getUint16(entryOffset, !bigEnd)];
       if (!tag && debug)
         console.log("Unknown tag: " + file.getUint16(entryOffset, !bigEnd));
       tags[tag] = readTagValue(file, entryOffset, tiffStart, dirStart, bigEnd);
     }
     return tags;
+  }
+
+  /**
+   * Assign tags a human readable string value.
+   *
+   * Inputs
+   * ------
+   * rawTags : Object
+   *     The raw tags found from the image metadata
+   * humanTags : Object
+   *     1:1 Mapping of raw tags to human readable strings
+   */
+  function getHumanReadableTags(rawTags, humanTags) {
+    function getHumanTag(rawKey, rawVal, humanTags) {
+      switch (parseInt(rawKey)) {
+        case 0x9208: // LightSource
+        case 0x9209: // Flash
+        case 0x9207: // MeteringMode
+        case 0x8822: // ExposureProgram
+        case 0xa217: // SensingMethod
+        case 0xa406: // SceneCaptureType
+        case 0xa301: // SceneType
+        case 0xa401: // CustomRendered
+        case 0xa403: // WhiteBalance
+        case 0xa407: // GainControl
+        case 0xa408: // Contrast
+        case 0xa409: // Saturation
+        case 0xa40a: // Sharpness
+        case 0xa40c: // SubjectDistanceRange
+        case 0xa300: // FileSource
+          return [
+            humanTags[rawKey],
+            StringValues[humanTags[rawKey]][rawVal.toString()],
+          ];
+          break;
+
+        case 0x9000: // ExifVersion
+        case 0xa000: // FlashpixVersion
+          return [
+            humanTags[rawKey],
+            String.fromCharCode(rawVal[0], rawVal[1], rawVal[2], rawVal[3]),
+          ];
+          break;
+
+        case 0x9101: // ComponentsConfiguration
+          return [
+            humanTags[rawKey],
+            StringValues.Components[rawVal[0]] +
+              StringValues.Components[rawVal[1]] +
+              StringValues.Components[rawVal[2]] +
+              StringValues.Components[rawVal[3]],
+          ];
+          break;
+
+        case 0x0000: // GPSVersionID
+          return [
+            humanTags[rawKey],
+            rawVal[0] + "." + rawVal[1] + "." + rawVal[2] + "." + rawVal[3],
+          ];
+          break;
+
+        default:
+          return [humanTags[rawKey], rawVal];
+          break;
+      }
+    }
+
+    humanReadable = {};
+    humanTags = humanTags || AllTags;
+
+    for (var tag of Object.keys(rawTags)) {
+      if ("thumbnail" == tag) {
+        humanReadable["thumbnail"] = {};
+        for (var thumbTag of Object.keys(rawTags[tag])) {
+          mapped = getHumanTag(thumbTag, rawTags[tag][thumbTag], IFD1Tags);
+          humanReadable["thumbnail"][mapped[0]] = mapped[1];
+        }
+      } else {
+        mapped = getHumanTag(tag, rawTags[tag], AllTags);
+        humanReadable[mapped[0]] = mapped[1];
+      }
+    }
+
+    return humanReadable;
   }
 
   /**
@@ -742,10 +860,8 @@
    * tiffStart : TODO
    * firstIFDOffset : TODO
    * bigEnd : TODO
-   * raw : bool
-   *     Tags should be human readable (false) or machine readable (true)
    */
-  function readThumbnailImage(dataView, tiffStart, firstIFDOffset, bigEnd, raw) {
+  function readThumbnailImage(dataView, tiffStart, firstIFDOffset, bigEnd) {
     // get the IFD1 offset
     var IFD1OffsetPointer = getNextIFDOffset(
       dataView,
@@ -767,9 +883,7 @@
       dataView,
       tiffStart,
       tiffStart + IFD1OffsetPointer,
-      IFD1Tags,
-      bigEnd,
-      raw
+      bigEnd
     );
 
     // EXIF 2.3 specification for JPEG format thumbnail
@@ -780,16 +894,20 @@
     // Data format is ordinary JPEG format, starts from 0xFFD8 and ends by 0xFFD9. It seems that
     // JPEG format and 160x120pixels of size are recommended thumbnail format for Exif2.1 or later.
 
-    if (thumbTags["Compression"]) {
+    if (thumbTags[0x8825]) {
+      // Compression
       // console.log('Thumbnail image found!');
 
-      switch (thumbTags["Compression"]) {
+      switch (thumbTags[0x8825]) {
         case 6:
           // console.log('Thumbnail image format is JPEG');
-          if (thumbTags.JpegIFOffset && thumbTags.JpegIFByteCount) {
+          if (
+            thumbTags[0x0201] && // JpegIFOffset
+            thumbTags[0x0202] // JpegIFByteCount
+          ) {
             // extract the thumbnail
-            var tOffset = tiffStart + thumbTags.JpegIFOffset;
-            var tLength = thumbTags.JpegIFByteCount;
+            var tOffset = tiffStart + thumbTags[0x0201]; // JpegIFOffset;
+            var tLength = thumbTags[0x0202]; // JpegIFByteCount;
             thumbTags["blob"] = new Blob(
               [new Uint8Array(dataView.buffer, tOffset, tLength)],
               {
@@ -807,12 +925,14 @@
         default:
           console.log(
             "Unknown thumbnail image format '%s'",
-            thumbTags["Compression"]
+            thumbTags[0x8825] // Compression
           );
       }
-    } else if (thumbTags["PhotometricInterpretation"] == 2) {
+    } else if (thumbTags[0x0106] == 2) {
+      // PhotometricInterpretation
       console.log("Thumbnail image format is RGB, which is not implemented.");
     }
+
     return thumbTags;
   }
 
@@ -832,10 +952,8 @@
    * file : DataView
    * start : TODO: What type is this?
    *     Location where the EXIF data begin in the file
-   * raw : bool
-   *     Tags should be human readable (false) or machine readable (true)
    */
-  function readEXIFData(file, start, raw) {
+  function readEXIFData(file, start) {
     if (getStringFromDB(file, start, 4) != "Exif") {
       if (debug)
         console.log("Not valid EXIF data! " + getStringFromDB(file, start, 4));
@@ -875,88 +993,21 @@
       return false;
     }
 
-    tags = readTags(
-      file,
-      tiffOffset,
-      tiffOffset + firstIFDOffset,
-      TiffTags,
-      bigEnd,
-      raw
-    );
+    tags = readTags(file, tiffOffset, tiffOffset + firstIFDOffset, bigEnd);
 
-    if (tags.ExifIFDPointer) {
-      exifData = readTags(
-        file,
-        tiffOffset,
-        tiffOffset + tags.ExifIFDPointer,
-        ExifTags,
-        bigEnd,
-        raw
-      );
+    if (tags[0x8769]) {
+      // ExifIFDPointer
+      exifData = readTags(file, tiffOffset, tiffOffset + tags[0x8769], bigEnd);
+
       for (tag in exifData) {
-        switch (tag) {
-          case "LightSource":
-          case "Flash":
-          case "MeteringMode":
-          case "ExposureProgram":
-          case "SensingMethod":
-          case "SceneCaptureType":
-          case "SceneType":
-          case "CustomRendered":
-          case "WhiteBalance":
-          case "GainControl":
-          case "Contrast":
-          case "Saturation":
-          case "Sharpness":
-          case "SubjectDistanceRange":
-          case "FileSource":
-            exifData[tag] = StringValues[tag][exifData[tag]];
-            break;
-
-          case "ExifVersion":
-          case "FlashpixVersion":
-            exifData[tag] = String.fromCharCode(
-              exifData[tag][0],
-              exifData[tag][1],
-              exifData[tag][2],
-              exifData[tag][3]
-            );
-            break;
-
-          case "ComponentsConfiguration":
-            exifData[tag] =
-              StringValues.Components[exifData[tag][0]] +
-              StringValues.Components[exifData[tag][1]] +
-              StringValues.Components[exifData[tag][2]] +
-              StringValues.Components[exifData[tag][3]];
-            break;
-        }
         tags[tag] = exifData[tag];
       }
     }
 
-    if (tags.GPSInfoIFDPointer) {
-      gpsData = readTags(
-        file,
-        tiffOffset,
-        tiffOffset + tags.GPSInfoIFDPointer,
-        GPSTags,
-        bigEnd,
-        raw
-      );
+    if (tags[0x8825]) {
+      // GPSInfoIFDPointer
+      gpsData = readTags(file, tiffOffset, tiffOffset + tags[0x8825], bigEnd);
       for (tag in gpsData) {
-        switch (tag) {
-          case "GPSVersionID":
-            gpsData[tag] =
-              gpsData[tag][0] +
-              "." +
-              gpsData[tag][1] +
-              "." +
-              gpsData[tag][2] +
-              "." +
-              gpsData[tag][3];
-            break;
-        }
         tags[tag] = gpsData[tag];
       }
     }
@@ -966,8 +1017,7 @@
       file,
       tiffOffset,
       firstIFDOffset,
-      bigEnd,
-      raw
+      bigEnd
     );
 
     return tags;
@@ -1119,16 +1169,12 @@
    * ------
    * img : HTMLImageElement || self.Image
    * callback : function
-   * raw : bool
-   *     Default: false
-   *     Tags should be human readable (false) or machine readable (true)
    *
    * Returns
    * -------
    * bool : Validity of the passed img
    */
-  EXIF.getData = function (img, callback, raw) {
-    raw = raw || false
+  EXIF.getData = function (img, callback) {
     if (
       ((self.Image && img instanceof self.Image) ||
         (self.HTMLImageElement && img instanceof self.HTMLImageElement)) &&
@@ -1138,7 +1184,7 @@
     }
 
     if (!imageHasData(img)) {
-      getImageData(img, callback, raw);
+      getImageData(img, callback);
     } else {
       if (callback) {
         callback.call(img);
@@ -1147,9 +1193,11 @@
     return true;
   };
 
-  EXIF.getTag = function (img, tag) {
+  EXIF.getTag = function (img, tag, raw) {
     if (!imageHasData(img)) return;
-    return img.exifdata[tag];
+    raw = raw || false;
+    tags = raw ? img.exifdata : getHumanReadableTags(img.exifdata);
+    return tags[tag];
   };
 
   EXIF.getIptcTag = function (img, tag) {
@@ -1157,36 +1205,22 @@
     return img.iptcdata[tag];
   };
 
-  EXIF.getAllTags = function (img) {
+  EXIF.getAllTags = function (img, raw) {
     if (!imageHasData(img)) return {};
-    var a,
-      data = img.exifdata,
-      tags = {};
-    for (a in data) {
-      if (data.hasOwnProperty(a)) {
-        tags[a] = data[a];
-      }
-    }
+    raw = raw || false;
+    tags = raw ? img.exifdata : getHumanReadableTags(img.exifdata);
     return tags;
   };
 
   EXIF.getAllIptcTags = function (img) {
     if (!imageHasData(img)) return {};
-    var a,
-      data = img.iptcdata,
-      tags = {};
-    for (a in data) {
-      if (data.hasOwnProperty(a)) {
-        tags[a] = data[a];
-      }
-    }
-    return tags;
+    return img.iptcdata;
   };
 
   EXIF.pretty = function (img) {
     if (!imageHasData(img)) return "";
     var a,
-      data = img.exifdata,
+      data = getHumanReadableTags(img.exifdata),
       strPretty = "";
     for (a in data) {
       if (data.hasOwnProperty(a)) {
@@ -1218,13 +1252,12 @@
    * Inputs
    * ------
    * img : self.Image
-   * raw : bool
-   *     Default: false
-   *     Tags should be human readable (false) or machine readable (true)
    */
   EXIF.readFromBinaryFile = function (file, raw) {
-    raw = raw || false
-    return findEXIFinJPEG(file, raw);
+    raw = raw || false;
+    var data = findEXIFinJPEG(file);
+    data = raw ? data : getHumanReadableTags(data);
+    return data;
   };
 
   if (typeof define === "function" && define.amd) {
