@@ -41,5 +41,5 @@ be saved to the image as raw.
 
 Issue #69 #72: Added IPTC methods. New NPM release.
 
-[Unreleased] https://github.com/andrew-womeldorf/exif-js/compare/v2.5.0...HEAD
-[v2.5.0] https://github.com/andrew-womeldorf/exif-js/compare/v2.4.0...v2.5.0
+[Unreleased]: https://github.com/andrew-womeldorf/exif-js/compare/v2.5.0...HEAD
+[v2.5.0]: https://github.com/andrew-womeldorf/exif-js/compare/v2.4.0...v2.5.0
