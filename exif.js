@@ -381,8 +381,21 @@
     }
   }
 
+  /** v3.0.0 Deprecated */
   function imageHasData(img) {
+    return imageHasExifData(img);
+  }
+
+  function imageHasExifData(img) {
     return !!img.exifdata;
+  }
+
+  function imageHasIptcData(img) {
+    return !!img.iptcdata;
+  }
+
+  function imageHasXmpData(img) {
+    return !!img.xmpdata;
   }
 
   function base64ToArrayBuffer(base64, contentType) {
@@ -1193,28 +1206,121 @@
     return true;
   };
 
+  /** v3.0.0 Deprecated */
   EXIF.getTag = function (img, tag, raw) {
-    if (!imageHasData(img)) return;
+    raw = raw || false;
+    return EXIF.getExifTag(img, tag, raw);
+  }
+
+  /**
+   * Returns an EXIF tag
+   *
+   * If the Raw argument is true, then the tag being searched for must also be raw.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   * tag : any
+   *     String name or integer of the tag to query
+   * raw : bool
+   *     Default: false
+   *     Retrieve the raw value for the tag. False returns the human-readable value.
+   */
+  EXIF.getExifTag = function (img, tag, raw) {
+    if (!imageHasExifData(img)) return;
     raw = raw || false;
     tags = raw ? img.exifdata : getHumanReadableTags(img.exifdata);
     return tags[tag];
   };
 
+  /**
+   * Returns an IPTC tag
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   * tag : any
+   *     String name or integer of the tag to query
+   */
   EXIF.getIptcTag = function (img, tag) {
-    if (!imageHasData(img)) return;
+    if (!imageHasIptcData(img)) return;
     return img.iptcdata[tag];
   };
 
-  EXIF.getAllTags = function (img, raw) {
-    if (!imageHasData(img)) return {};
+  /**
+   * Get all EXIF tags.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   * raw : bool
+   *     Default: false
+   *     Retrieve the raw value for the tag. False returns the human-readable value.
+   *
+   * Returns
+   * -------
+   * Object
+   */
+  EXIF.getAllExifTags = function (img, raw) {
+    if (!imageHasExifData(img)) return {};
     raw = raw || false;
     tags = raw ? img.exifdata : getHumanReadableTags(img.exifdata);
     return tags;
   };
 
+  /**
+   * Get all IPTC tags.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   *
+   * Returns
+   * -------
+   * Object
+   */
   EXIF.getAllIptcTags = function (img) {
-    if (!imageHasData(img)) return {};
+    if (!imageHasIptcData(img)) return {};
     return img.iptcdata;
+  };
+
+  /**
+   * Get all XMP tags.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   *
+   * Returns
+   * -------
+   * Object
+   */
+  EXIF.getAllXmpTags = function (img) {
+    if (!imageHasXmpData(img)) return {};
+    return img.xmpdata;
+  };
+
+  /**
+   * Get all tags.
+   *
+   * Inputs
+   * ------
+   * img : HTMLImageElement || self.Image
+   * raw : boolean
+   *     Default: false
+   *     Retrieve the raw value for the tag. False returns the human-readable value.
+   *
+   * Returns
+   * -------
+   * {exif: Object, iptc: Object, xmp: Object}
+   */
+  EXIF.getAllTags() = function (img, raw) {
+    raw = raw || false;
+    return {
+      exif: EXIF.getAllExifTags(img, raw),
+      iptc: EXIF.getAllIptcTags(img),
+      xmp: EXIF.getAllXmpTags(img),
+    };
   };
 
   EXIF.pretty = function (img) {
