@@ -1314,7 +1314,7 @@
    * -------
    * {exif: Object, iptc: Object, xmp: Object}
    */
-  EXIF.getAllTags() = function (img, raw) {
+  EXIF.getAllTags = function (img, raw) {
     raw = raw || false;
     return {
       exif: EXIF.getAllExifTags(img, raw),
